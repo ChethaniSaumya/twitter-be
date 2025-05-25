@@ -12,6 +12,8 @@ const Bottleneck = require('bottleneck');
 
 const { FieldValue } = require('firebase-admin/firestore')
 const { db } = require('./firebase.js');
+const { authenticate } = require('./authenticate.js');
+const admin = require('firebase-admin');
 
 //const { Client, auth } = require("twitter-api-sdk");
 
@@ -585,13 +587,24 @@ app.post('/assign-points', async (req, res) => {
 
   try {
     const userRef = db.collection('users').doc(username);
+    
+    // First update the user's points
     await userRef.set({
       tasks: {
         [task]: points
       }
     }, { merge: true });
 
-    res.json({ message: `Assigned ${points} points to ${username} for ${task}` });
+    // Then delete from pending collection if it's a Follow Account task
+    if (task === "Follow Account") {
+      const pendingRef = db.collection('pending').doc(username);
+      await pendingRef.delete();
+    }
+
+    res.json({ 
+      message: `Assigned ${points} points to ${username} for ${task}`,
+      points: points // Include points in response
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Something went wrong" });
@@ -672,6 +685,101 @@ app.get('/leaderboard', cors(corsOptions), async (req, res) => {
   } catch (error) {
     console.error("Error fetching leaderboard:", error);
     res.status(500).json({ error: "Failed to fetch leaderboard data" });
+  }
+});
+
+app.post('/api/task-click', async (req, res) => {
+  try {
+    const { userId, username, task } = req.body;
+
+    if (!userId || !task) {
+      return res.status(400).json({ error: 'Missing userId or task' });
+    }
+
+    // Create a document reference
+    const docRef = db.collection('pending').doc(userId);
+
+    // Set the document with the task data
+    await docRef.set({
+      userId,
+      username: username || null,
+      status: `${task} - Pending`,
+      task,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    console.log(`Task recorded: ${task} for user ${userId}`);
+    res.json({ message: 'Task recorded as pending', task, userId });
+
+  } catch (error) {
+    console.error('Error updating Firestore:', error);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+});
+
+// Optional: Add a route to check pending tasks
+app.get('/api/pending/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const docRef = db.collection('pending').doc(userId);
+    const doc = await docRef.get();
+
+    if (doc.exists) {
+      res.json({ exists: true, data: doc.data() });
+    } else {
+      res.json({ exists: false });
+    }
+  } catch (error) {
+    console.error('Error fetching pending task:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Add CORS options for the task-click route
+app.options("/api/task-click", (req, res) => {
+  res.sendStatus(200);
+});
+
+// Add this to your backend (server.js)
+app.get('/api/pending-users', async (req, res) => {
+  try {
+    const snapshot = await db.collection('pending').get();
+    const pendingUsers = [];
+    
+    snapshot.forEach(doc => {
+      pendingUsers.push({
+        userId: doc.id,
+        ...doc.data()
+      });
+    });
+
+    res.json(pendingUsers);
+  } catch (error) {
+    console.error('Error fetching pending users:', error);
+    res.status(500).json({ error: 'Failed to fetch pending users' });
+  }
+});
+
+app.post('/approve-pending', async (req, res) => {
+  const { username } = req.body;
+
+  try {
+    // 1. Add points to users collection
+    const userRef = db.collection('users').doc(username);
+    await userRef.set({
+      tasks: {
+        "Follow Account": 25
+      }
+    }, { merge: true });
+
+    // 2. Remove from pending collection
+    const pendingRef = db.collection('pending').doc(username);
+    await pendingRef.delete();
+
+    res.json({ message: `Approved and assigned 25 points to ${username}` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to approve pending user" });
   }
 });
 
