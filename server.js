@@ -290,7 +290,7 @@ app.get('/auth/twitter', (req, res) => {
     const params = {
         response_type: 'code',
         client_id: TWITTER_CONFIG.clientId,
-        redirect_uri: 'http://localhost:3001/auth/callback', // MUST point to backend
+        redirect_uri: 'https://twitter-be-e2ow.onrender.com/auth/callback', // MUST point to backend
         scope: TWITTER_CONFIG.scope,
         state,
         code_challenge: codeChallenge,
@@ -325,7 +325,7 @@ app.get('/auth/callback', cors(corsOptions), async (req, res) => {
                 code,
                 grant_type: 'authorization_code',
                 client_id: TWITTER_CONFIG.clientId,
-                redirect_uri: 'http://localhost:3001/auth/callback', // Must match initial request
+                redirect_uri: 'https://twitter-be-e2ow.onrender.com/auth/callback', // Must match initial request
                 code_verifier,
             }),
             {
