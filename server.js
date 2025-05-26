@@ -134,7 +134,7 @@ app.use((req, res, next) => {
 });
 
 var corsOptions = {
-    origin: ['https://gonk-one.vercel.app', 'https://gonk-admin.vercel.app'],
+    origin: ['https://gonk-one.vercel.app', 'https://www.gonk.uk', 'https://gonk.uk', 'https://gonk-admin.vercel.app'],
     optionsSuccessStatus: 200,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -145,7 +145,7 @@ var corsOptions = {
 // Twitter OAuth 2.0 Config
 const TWITTER_CONFIG = {
     clientId: process.env.TWITTER_CLIENT_ID,
-    redirectUri: 'https://gonk-one.vercel.app/auth/callback',
+    redirectUri: 'https://gonk.uk/auth/callback',
     authUrl: 'https://twitter.com/i/oauth2/authorize',
     tokenUrl: 'https://api.twitter.com/2/oauth2/token',
     scope: ['tweet.read', 'users.read', 'offline.access', 'tweet.write'].join(' '),
@@ -374,7 +374,7 @@ app.get('/auth/callback', cors(corsOptions), async (req, res) => {
         fs.writeFileSync(LOG_FILE, JSON.stringify(logData, null, 2));
 
         // Redirect to frontend
-        res.redirect(`https://gonk-one.vercel.app/?username=${username}&access_token=${access_token}`);
+        res.redirect(`https://gonk.uk/?username=${username}&access_token=${access_token}`);
 
     } catch (error) {
         console.error('Callback error:', {
@@ -387,7 +387,7 @@ app.get('/auth/callback', cors(corsOptions), async (req, res) => {
             tokenStore.delete(username);
         }
 
-        res.redirect('https://gonk-one.vercel.app/?error=auth_failed');
+        res.redirect('https://gonk.uk/?error=auth_failed');
     }
 });
 
