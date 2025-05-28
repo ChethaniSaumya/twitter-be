@@ -306,16 +306,17 @@ app.get('/auth/twitter', (req, res) => {
 });
 
 app.get('/auth/callback', cors(corsOptions), async (req, res) => {
-    console.log("Callback hit with query:", req.query); // Debug logging
+    console.log("Callback hit with query:", req.query);
 
     const { code, state } = req.query;
     const { code_verifier, state: storedState } = req.cookies;
 
-    // Validation
     if (!code || !state || !storedState || state !== storedState) {
         console.error('Invalid callback:', { code, state, storedState });
         return res.status(400).send('Invalid OAuth state or missing code');
     }
+
+    let username;
 
     try {
         // Exchange code for token
@@ -325,7 +326,7 @@ app.get('/auth/callback', cors(corsOptions), async (req, res) => {
                 code,
                 grant_type: 'authorization_code',
                 client_id: TWITTER_CONFIG.clientId,
-                redirect_uri: 'https://twitter-be-e2ow.onrender.com/auth/callback', // Must match initial request
+                redirect_uri: 'https://twitter-be-e2ow.onrender.com/auth/callback',
                 code_verifier,
             }),
             {
@@ -338,42 +339,40 @@ app.get('/auth/callback', cors(corsOptions), async (req, res) => {
             }
         );
 
-        // Extract all token data
         const { access_token, refresh_token, expires_in } = tokenResponse.data;
         console.log("Token exchange successful");
-
-        // Store token data in both systems
-        const tokenData = {
-            access_token,
-            refresh_token,
-            expires_at: Date.now() + (expires_in * 1000)
-        };
 
         // Get user info
         const userResponse = await axios.get('https://api.twitter.com/2/users/me', {
             headers: { Authorization: `Bearer ${access_token}` },
         });
 
-        const username = userResponse.data.data.username;
+        username = userResponse.data.data.username;
         const timestamp = new Date().toISOString();
 
-        // 1. Store in tokenStore (for automatic refresh)
+        // Store tokens
         tokenStore.set(username, {
             accessToken: access_token,
             refreshToken: refresh_token,
             expiresAt: Date.now() + (expires_in * 1000)
         });
 
-        // 2. Log to JSON file (your existing system)
+        // Log to JSON file
         const logData = JSON.parse(fs.readFileSync(LOG_FILE));
         logData.push({
             username,
             timestamp,
-            tokenData
+            tokenData: {
+                access_token,
+                refresh_token,
+                expires_at: Date.now() + (expires_in * 1000)
+            }
         });
         fs.writeFileSync(LOG_FILE, JSON.stringify(logData, null, 2));
 
-        // Redirect to frontend
+        // NEW: Automatically award 25 points for account connection
+        await recordPoints(username, 25, 'Connect Account');
+
         res.redirect(`https://gonk.uk/?username=${username}&access_token=${access_token}`);
 
     } catch (error) {
@@ -382,7 +381,6 @@ app.get('/auth/callback', cors(corsOptions), async (req, res) => {
             response: error.response?.data
         });
 
-        // Clear any partial auth data
         if (username) {
             tokenStore.delete(username);
         }
@@ -587,29 +585,41 @@ app.post('/assign-points', async (req, res) => {
 
   try {
     const userRef = db.collection('users').doc(username);
-    
-    // First update the user's points
+    const userDoc = await userRef.get();
+
+    let existingPoints = 0;
+
+    if (userDoc.exists) {
+      const userData = userDoc.data();
+      const tasks = userData.tasks || {};
+      existingPoints = tasks[task] || 0;
+    }
+
+    const newTotalPoints = existingPoints + points;
+
+    // Update the user's points for the specific task
     await userRef.set({
       tasks: {
-        [task]: points
+        [task]: newTotalPoints
       }
     }, { merge: true });
 
-    // Then delete from pending collection if it's a Follow Account task
+    // Remove from pending if it's a Follow Account task
     if (task === "Follow Account") {
       const pendingRef = db.collection('pending').doc(username);
       await pendingRef.delete();
     }
 
-    res.json({ 
-      message: `Assigned ${points} points to ${username} for ${task}`,
-      points: points // Include points in response
+    res.json({
+      message: `Added ${points} points to ${username} for ${task}. New total: ${newTotalPoints}`,
+      points: newTotalPoints
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Something went wrong" });
   }
 });
+
 //.............................. ADMIN PANEL - END.............................. 
 
 async function recordPoints(username, points, task) {
