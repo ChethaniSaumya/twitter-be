@@ -370,8 +370,8 @@ app.get('/auth/callback', cors(corsOptions), async (req, res) => {
         });
         fs.writeFileSync(LOG_FILE, JSON.stringify(logData, null, 2));
 
-        // NEW: Automatically award 25 points for account connection
-        await recordPoints(username, 25, 'Connect Account');
+        // NEW: Automatically award 0 points for account connection
+        await recordPoints(username, 0, 'Connect Account');
 
         res.redirect(`https://gonk.uk/?username=${username}&access_token=${access_token}`);
 
